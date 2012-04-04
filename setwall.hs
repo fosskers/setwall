@@ -72,7 +72,7 @@ argError msg = error $ usageInfo (msg ++ "\n" ++ usageMsg) options
 
 setRandomWall :: [String] -> IO ()
 setRandomWall dir
-    | null dir  = setwall "."
+    | null dir  = setwall "./"
     | otherwise = setwall $ head dir
     where setwall dir = do
             contents <- getDirectoryContents dir
