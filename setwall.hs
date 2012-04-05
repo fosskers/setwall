@@ -1,23 +1,29 @@
-import System.Directory (getCurrentDirectory, getDirectoryContents,
-                         getHomeDirectory, renameFile)    
+import System.IO (openTempFile,hPutStrLn,hClose)
+import System.Random (getStdGen,randomR)
 import System.Environment (getArgs)
 import Text.Regex.Posix ((=~))
 import System.Exit (ExitCode)
 import System.Console.GetOpt
 import System.Cmd (system)
 import Data.Char (toLower)
-import System.Random
+import System.Directory ( getCurrentDirectory
+                        , getDirectoryContents
+                        , getHomeDirectory
+                        , renameFile
+                        )
 
-data Flag = RewriteXinitrc | RandomWall
+data Flag = Save | RandomWall | Help
 
 options :: [OptDescr Flag]
-options = [ Option ['x'] [] (NoArg RewriteXinitrc) xDesc
+options = [ Option ['s'] ["save"]   (NoArg Save)       xDesc
           , Option ['r'] ["random"] (NoArg RandomWall) rDesc
+          , Option ['h'] ["help"]   (NoArg Help)       hDesc
           ]
     where xDesc = "Change the current wallpaper, and also edit ~/.xinitrc" ++
                   "\nto to save the change."
           rDesc = "Randomly picks an image file from the current directory" ++
                   "\nand sets it as the wallpaper."
+          hDesc = "Display this help message."
 
 usageMsg :: String
 usageMsg = "Usage : setwall [OPTION] (image file)"
@@ -28,13 +34,6 @@ pathToXinitrc = do
   home <- getHomeDirectory
   return (home ++ "/.xinitrc")
 
-tempFilename :: String
-tempFilename = "temp.lol"  -- Could this already exist?
-
--- The keyword that we're looking for.
-target :: String
-target = "hsetroot"
-
 command :: String
 command = "hsetroot -fill "
 
@@ -42,24 +41,12 @@ main = do
   args <- getArgs
   opts <- processOpts args
   case opts of
-    ([RewriteXinitrc],(filename:_)) -> putStrLn "Not ready yet."
+    ([Save],(fname:_))     -> saveToXinitrc fname
     ([RandomWall],dirName) -> setRandomWall dirName
-    ([],(filename:_)) -> changeWallpaper $ command ++ filename
-    (_,[])            -> argError "No image file given."
-    (_,_)             -> argError "Flag related error."
-
-{-
-main = do
-  (fname:_) <- getArgs
-  rcFile    <- pathToXinitrc                
-  rawLines  <- readFile rcFile
-  fullPath  <- getFullPath fname
-  changeWallpaper $ command ++ fullPath  -- Set the new wallpaper now.
-  -- Also set it in the .xinitrc file to save the change.
-  let fixedLines = swapLine fullPath $ lines rawLines
-  writeFile tempFilename $ unlines fixedLines
-  renameFile tempFilename rcFile
--}
+    ([Help],_)     -> putStrLn $ usageInfo usageMsg options                              
+    ([],(fname:_)) -> changeWallpaper $ command ++ fname
+    (_,[])         -> argError "No image file given."
+    (_,_)          -> argError "Flag related error."
 
 processOpts :: [String] -> IO ([Flag],[String])
 processOpts args =
@@ -69,6 +56,32 @@ processOpts args =
 
 argError :: String -> a
 argError msg = error $ usageInfo (msg ++ "\n" ++ usageMsg) options
+
+saveToXinitrc :: String -> IO ()
+saveToXinitrc fname = do
+  rcFile   <- pathToXinitrc                
+  rawLines <- readFile rcFile
+  fullPath <- getFullPath fname
+  let fixedLines = swapLine fullPath $ lines rawLines
+  (tempFile,handle) <- openTempFile "." "temp.txt"
+  hPutStrLn handle $ unlines fixedLines
+  hClose handle
+  renameFile tempFile rcFile
+  changeWallpaper $ command ++ fullPath
+
+getFullPath :: String -> IO String
+getFullPath fname = do
+  pwd <- getCurrentDirectory
+  return (pwd ++ "/" ++ fname)
+
+swapLine :: String -> [String] -> [String]
+swapLine path = map (\line -> if line == "" || (head $ words line) /= target
+                              then line
+                              else command ++ path)
+    where target = "hsetroot"
+
+changeWallpaper :: String -> IO ()
+changeWallpaper file = system file >> return ()
 
 setRandomWall :: [String] -> IO ()
 setRandomWall dir
@@ -85,16 +98,3 @@ setRandomWall dir
                     newWall    = pics !! pos
                 changeWallpaper $ command ++ dir ++ newWall
               where isPic file = file =~ "([.]jpg$|[.]jpeg$|[.]png$)" :: Bool
-
-getFullPath :: String -> IO String
-getFullPath fname = do
-  pwd <- getCurrentDirectory
-  return (pwd ++ "/" ++ fname)
-
-changeWallpaper :: String -> IO ()
-changeWallpaper file = system file >> return ()
-
-swapLine :: String -> [String] -> [String]
-swapLine path = map (\line -> if line == "" || (head $ words line) /= target
-                              then line
-                              else command ++ path)
