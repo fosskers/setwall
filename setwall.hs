@@ -44,7 +44,7 @@ main = do
     ([Save],(fname:_))     -> saveToXinitrc fname
     ([RandomWall],dirName) -> setRandomWall dirName
     ([Help],_)     -> putStrLn $ usageInfo usageMsg options                              
-    ([],(fname:_)) -> changeWallpaper $ command ++ fname
+    ([],(fname:_)) -> changeWallpaper fname
     (_,[])         -> argError "No image file given."
     (_,_)          -> argError "Flag related error."
 
@@ -67,7 +67,7 @@ saveToXinitrc fname = do
   hPutStrLn handle $ unlines fixedLines
   hClose handle
   renameFile tempFile rcFile
-  changeWallpaper $ command ++ fullPath
+  changeWallpaper fullPath
 
 getFullPath :: String -> IO String
 getFullPath fname = do
@@ -81,7 +81,7 @@ swapLine path = map (\line -> if line == "" || (head $ words line) /= target
     where target = "hsetroot"
 
 changeWallpaper :: String -> IO ()
-changeWallpaper file = system file >> return ()
+changeWallpaper fname = system (command ++ fname) >> return ()
 
 setRandomWall :: [String] -> IO ()
 setRandomWall dir
@@ -94,7 +94,7 @@ setRandomWall dir
             case pics of
               [] -> putStrLn "No valid images files in this directory."
               _  -> do
-                let (pos,gen') = randomR (0, length pics - 1) gen
-                    newWall    = pics !! pos
-                changeWallpaper $ command ++ dir ++ newWall
+                let (pos,_) = randomR (0, length pics - 1) gen
+                    newWall = pics !! pos
+                changeWallpaper $ dir ++ newWall
               where isPic file = file =~ "([.]jpg$|[.]jpeg$|[.]png$)" :: Bool
