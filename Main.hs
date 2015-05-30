@@ -13,20 +13,23 @@ import qualified Text.Parsec as P
 
 ---
 
-flags :: Parser (Sh ())
-flags = ((setwall . T.pack) <$> strOption
+data Flag = Set T.Text | Random (Maybe FilePath)
+
+flags :: Parser Flag
+flags = ((Set . T.pack) <$> strOption
         (long "set" <> short 's' <> metavar "FILE"
          <> help "Set the wallpaper given."))
-        <|> flag' setRandom
-        (long "random" <> short 'r'
-         <> help "Randomly picks an image file from the current directory.")
+        <|> (Random <$> (flag' Nothing
+         (long "random" <> short 'r'
+          <> help "Randomly picks an image file from a directory.")
+         *> optional (fromText . T.pack <$> argument str (metavar "DIR"))))
 
 setwall :: T.Text -> Sh ()
 setwall fname = run_ "hsetroot" ["-fill", fname]
 
-setRandom :: Sh ()
-setRandom = do
-  pics  <- pwd >>= ls >>= liftIO . shuffleM . filter isImg
+setRandom :: FilePath -> Sh ()
+setRandom dir = do
+  pics  <- ls dir >>= liftIO . shuffleM . filter isImg
   when (not $ null pics) (setwall . toTextIgnore $ head pics)
 
 isImg :: FilePath -> Bool
@@ -36,7 +39,12 @@ img :: P.Parsec T.Text () ()
 img = void $ P.many (P.noneOf ".") *> P.char '.' *> P.choice exts
   where exts = map P.string ["jpg", "jpeg", "png"]
 
+work :: Flag -> Sh ()
+work (Set file)        = setwall file
+work (Random Nothing)  = pwd >>= setRandom
+work (Random (Just d)) = setRandom d
+
 main :: IO ()
-main = execParser opts >>= shelly
+main = execParser opts >>= shelly . work
   where opts = info (helper <*> flags)
                (fullDesc <> header "setwall - Set a Linux wallpaper.")
